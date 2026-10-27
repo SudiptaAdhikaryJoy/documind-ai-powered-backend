@@ -1,0 +1,128 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum Role {
+    OWNER
+    MEMBER
+    VIEWER
+}
+
+enum Plan {
+    FREE
+    TEAM
+    BUSINESS
+}
+
+enum Status {
+    PENDING
+    INDEXING
+    READY
+    FAILED
+}
+
+model RefreshToken {
+    id        String    @id @default(uuid())
+    userId    String
+    tokenHash String    @unique
+    expiresAt DateTime
+    revokedAt DateTime?
+    createdAt DateTime  @default(now())
+    user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId])
+}
+
+model User {
+    id            String         @id @default(uuid())
+    email         String         @unique
+    phone         String         @unique
+    password      String
+    name          String
+    createdAt     DateTime       @default(now())
+    members       Membership[]
+    refreshTokens RefreshToken[]
+}
+
+model Workspace {
+    id        String       @id @default(uuid())
+    name      String
+    plan      Plan         @default(FREE)
+    createdAt DateTime     @default(now())
+    members   Membership[]
+    documents Document[]
+}
+
+model Membership {
+    id          String    @id @default(uuid())
+    userId      String
+    workspaceId String
+    role        Role      @default(MEMBER)
+    user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+    workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, workspaceId])
+    @@index([workspaceId])
+}
+
+model Document {
+    id          String    @id @default(uuid())
+    workspaceId String
+    title       String
+    kind        String    @default("other")
+    status      Status    @default(PENDING)
+    pageCount   Int       @default(0)
+    createdAt   DateTime  @default(now())
+    workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+    versions    Version[]
+
+    @@index([workspaceId, status])
+}
+
+model Version {
+    id         String   @id @default(uuid())
+    documentId String
+    label      String
+    byteSize   Int
+    sha256     String
+    createdAt  DateTime @default(now())
+    document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+    chunks     Chunk[]
+
+    @@unique([documentId, label])
+}
+
+model Chunk {
+    id        String                      @id @default(uuid())
+    versionId String
+    ordinal   Int
+    page      Int
+    heading   String?
+    content   String
+    tokens    Int                         @default(0)
+    embedding Unsupported("vector(768)")?
+    version   Version                     @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+    @@index([versionId])
+}
+
+model QueryLog {
+    id          String   @id @default(uuid())
+    workspaceId String
+    userId      String
+    question    String
+    abstained   Boolean  @default(false)
+    reason      String?
+    model       String
+    promptTok   Int      @default(0)
+    outputTok   Int      @default(0)
+    latencyMs   Int      @default(0)
+    createdAt   DateTime @default(now())
+
+    @@index([workspaceId, createdAt])
+}
