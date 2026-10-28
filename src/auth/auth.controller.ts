@@ -1,17 +1,17 @@
 import { Body, Controller, Post, UseGuards, Req } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from './jwt-auth.guard';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
+  AuthResponseDto,
   ErrorDto,
   LoginDto,
   RefreshDto,
@@ -23,15 +23,24 @@ import {
 import { AuthService } from './auth.service';
 
 @ApiTags('auth')
-@ApiBadRequestResponse({ description: 'Validation failed', type: ValidationErrorDto })
+@ApiBadRequestResponse({
+  description: 'Validation failed',
+  type: ValidationErrorDto,
+})
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @ApiOperation({ summary: 'Create a user and their first workspace' })
   @ApiBody({ type: RegisterDto })
-  @ApiCreatedResponse({ description: 'Registered; tokens issued', type: TokenPairDto })
-  @ApiConflictResponse({ description: 'Email already registered', type: ErrorDto })
+  @ApiCreatedResponse({
+    description: 'Registered; tokens issued',
+    type: AuthResponseDto,
+  })
+  @ApiConflictResponse({
+    description: 'Email already registered',
+    type: ErrorDto,
+  })
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
@@ -39,8 +48,11 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Log in with email and password' })
   @ApiBody({ type: LoginDto })
-  @ApiCreatedResponse({ description: 'Tokens issued', type: TokenPairDto })
-  @ApiUnauthorizedResponse({ description: 'Invalid credentials', type: ErrorDto })
+  @ApiCreatedResponse({ description: 'Tokens issued', type: AuthResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid credentials',
+    type: ErrorDto,
+  })
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
@@ -64,7 +76,10 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Revoke one refresh token (this session)' })
   @ApiBody({ type: RefreshDto })
-  @ApiCreatedResponse({ description: 'Token revoked (idempotent)', type: SuccessDto })
+  @ApiCreatedResponse({
+    description: 'Token revoked (idempotent)',
+    type: SuccessDto,
+  })
   @Post('logout')
   logout(@Body() dto: RefreshDto) {
     return this.auth.logout(dto.refreshToken);
@@ -73,8 +88,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Revoke every refresh token for the current user' })
   @ApiBearerAuth()
   @ApiCreatedResponse({ description: 'All sessions revoked', type: SuccessDto })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token', type: ErrorDto })
-  @UseGuards(AuthGuard('jwt'))
+  @ApiUnauthorizedResponse({
+    description: 'Missing or invalid access token',
+    type: ErrorDto,
+  })
+  @UseGuards(JwtAuthGuard)
   @Post('logout-all')
   logoutAll(@Req() req: { user: { userId: string } }) {
     return this.auth.logoutAll(req.user.userId);

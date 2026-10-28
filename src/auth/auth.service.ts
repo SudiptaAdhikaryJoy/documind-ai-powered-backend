@@ -9,7 +9,8 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 
-const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value: string) =>
+  createHash('sha256').update(value).digest('hex');
 
 @Injectable()
 export class AuthService {
@@ -21,7 +22,9 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (existing) throw new ConflictException('Email already registered');
 
     const password = await bcrypt.hash(dto.password, 12);
@@ -30,7 +33,9 @@ export class AuthService {
       const created = await tx.user.create({
         data: { email: dto.email, password, name: dto.name, phone: dto.phone },
       });
-      const workspace = await tx.workspace.create({ data: { name: dto.workspaceName } });
+      const workspace = await tx.workspace.create({
+        data: { name: dto.workspaceName },
+      });
       await tx.membership.create({
         data: { userId: created.id, workspaceId: workspace.id, role: 'OWNER' },
       });
@@ -86,13 +91,14 @@ export class AuthService {
       }),
     ]);
 
+    const accessToken = await this.signAccess(stored.userId, stored.user.email);
     return {
       statusCode: 200,
-      message: "Token refreshed successfully",
+      message: 'Token refreshed successfully',
       data: {
-        accessToken: await this.signAccess(stored.userId, stored.user.email),
+        accessToken,
         refreshToken: token,
-      }
+      },
     };
   }
 
@@ -121,6 +127,7 @@ export class AuthService {
     await this.prisma.refreshToken.create({
       data: { userId, tokenHash: hash, expiresAt },
     });
+    const accessToken = await this.signAccess(userId, email);
     return {
       statusCode: 201,
       message,
@@ -129,9 +136,9 @@ export class AuthService {
         email: email,
         id: userId,
         phone: phone,
-        accessToken: await this.signAccess(userId, email),
+        accessToken,
         refreshToken: token,
-      }
+      },
     };
   }
 
