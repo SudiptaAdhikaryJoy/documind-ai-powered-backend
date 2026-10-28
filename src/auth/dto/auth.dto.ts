@@ -64,6 +64,43 @@ export class LoginDto {
   password: string;
 }
 
+export class AuthDataDto {
+  @ApiProperty({ example: 'Jane Doe' })
+  userName: string;
+
+  @ApiProperty({ example: 'jane@acme.com' })
+  email: string;
+
+  @ApiProperty({ example: 'user-uuid' })
+  id: string;
+
+  @ApiProperty({ example: '01712345678' })
+  phone: string;
+
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    description: 'Short-lived JWT; send as Authorization: Bearer <token>',
+  })
+  accessToken: string;
+
+  @ApiProperty({
+    example: '9f2c1b7e4a6d...64-hex-chars',
+    description: 'Single-use opaque token; rotated on every refresh',
+  })
+  refreshToken: string;
+}
+
+export class AuthResponseDto {
+  @ApiProperty({ example: 201 })
+  statusCode: number;
+
+  @ApiProperty({ example: 'User logged in successfully' })
+  message: string;
+
+  @ApiProperty({ type: AuthDataDto })
+  data: AuthDataDto;
+}
+
 export class TokenPairDto {
   @ApiProperty({
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
@@ -100,7 +137,10 @@ export class ValidationErrorDto {
 
   @ApiProperty({
     type: [String],
-    example: ['email must be an email', 'password must be longer than or equal to 8 characters'],
+    example: [
+      'email must be an email',
+      'password must be longer than or equal to 8 characters',
+    ],
   })
   message: string[];
 
