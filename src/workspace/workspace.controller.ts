@@ -49,7 +49,7 @@ export class WorkspaceController {
     summary: 'List all workspaces the authenticated user belongs to',
   })
   @ApiOkResponse({ type: [WorkspaceSummaryDto] })
-  @Get()
+  @Get('list')
   listWorkspaces(@CurrentUser() user: JwtUserPayload) {
     return this.workspaceService.listUserWorkspaces(user.userId);
   }
@@ -57,7 +57,7 @@ export class WorkspaceController {
   @ApiOperation({ summary: 'Create a new workspace' })
   @ApiBody({ type: CreateWorkspaceDto })
   @ApiCreatedResponse({ type: WorkspaceSummaryDto })
-  @Post()
+  @Post('create')
   createWorkspace(
     @CurrentUser() user: JwtUserPayload,
     @Body() dto: CreateWorkspaceDto,

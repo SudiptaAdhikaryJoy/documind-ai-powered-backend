@@ -37,7 +37,13 @@ export class AuthService {
         data: { name: dto.workspaceName },
       });
       await tx.membership.create({
-        data: { userId: created.id, workspaceId: workspace.id, role: 'OWNER' },
+        data: {
+          userId: created.id,
+          workspaceId: workspace.id,
+          memberName: created.name,
+          workspaceName: workspace.name,
+          role: 'OWNER',
+        },
       });
       return created;
     });

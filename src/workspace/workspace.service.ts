@@ -26,17 +26,29 @@ export class WorkspaceService {
       orderBy: { workspace: { createdAt: 'desc' } },
     });
 
-    return memberships.map((m) => ({
+    const data = memberships.map((m) => ({
       id: m.workspace.id,
       name: m.workspace.name,
       plan: m.workspace.plan,
       role: m.role,
       createdAt: m.workspace.createdAt,
     }));
+
+    return {
+      statusCode: 200,
+      message: 'Workspaces fetched successfully',
+      data: data,
+    };
   }
 
   async createWorkspace(userId: string, dto: CreateWorkspaceDto) {
     return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
+      if (!user) throw new NotFoundException('User not found');
+
       const workspace = await tx.workspace.create({
         data: { name: dto.name },
       });
@@ -45,16 +57,22 @@ export class WorkspaceService {
         data: {
           userId,
           workspaceId: workspace.id,
+          memberName: user.name,
+          workspaceName: workspace.name,
           role: Role.OWNER,
         },
       });
 
       return {
-        id: workspace.id,
-        name: workspace.name,
-        plan: workspace.plan,
-        role: membership.role,
-        createdAt: workspace.createdAt,
+        statusCode: 201,
+        message: 'Workspace created successfully',
+        data: {
+          id: workspace.id,
+          name: workspace.name,
+          plan: workspace.plan,
+          role: membership.role,
+          createdAt: workspace.createdAt,
+        },
       };
     });
   }
@@ -77,13 +95,17 @@ export class WorkspaceService {
     }
 
     return {
-      id: workspace.id,
-      name: workspace.name,
-      plan: workspace.plan,
-      role: scope.role,
-      memberCount: workspace._count.members,
-      documentCount: workspace._count.documents,
-      createdAt: workspace.createdAt,
+      statusCode: 200,
+      message: 'Single workspace fetched successfully',
+      data: {
+        id: workspace.id,
+        name: workspace.name,
+        plan: workspace.plan,
+        role: scope.role,
+        memberCount: workspace._count.members,
+        documentCount: workspace._count.documents,
+        createdAt: workspace.createdAt,
+      },
     };
   }
 
@@ -103,7 +125,7 @@ export class WorkspaceService {
       orderBy: { role: 'asc' },
     });
 
-    return members.map((m) => ({
+    const data = members.map((m) => ({
       id: m.id,
       userId: m.user.id,
       name: m.user.name,
@@ -111,6 +133,12 @@ export class WorkspaceService {
       phone: m.user.phone,
       role: m.role,
     }));
+
+    return {
+      statusCode: 200,
+      message: 'Members fetched successfully',
+      data: data,
+    };
   }
 
   async inviteMember(scope: RequestScope, dto: InviteMemberDto) {
@@ -148,22 +176,35 @@ export class WorkspaceService {
       throw new ConflictException('User is already a member of this workspace');
     }
 
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: scope.workspaceId },
+      select: { name: true },
+    });
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
     const membership = await this.prisma.membership.create({
       data: {
         userId: targetUser.id,
         workspaceId: scope.workspaceId,
+        memberName: targetUser.name,
+        workspaceName: workspace.name,
         role: dto.role ?? Role.MEMBER,
       },
-      include: { user: true },
     });
 
     return {
-      id: membership.id,
-      userId: membership.user.id,
-      name: membership.user.name,
-      email: membership.user.email,
-      phone: membership.user.phone,
-      role: membership.role,
+      statusCode: 201,
+      message: 'Member invited successfully',
+      data: {
+        id: membership.id,
+        userId: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        phone: targetUser.phone,
+        role: membership.role,
+      },
     };
   }
 
@@ -205,12 +246,16 @@ export class WorkspaceService {
     });
 
     return {
-      id: updated.id,
-      userId: updated.user.id,
-      name: updated.user.name,
-      email: updated.user.email,
-      phone: updated.user.phone,
-      role: updated.role,
+      statusCode: 200,
+      message: 'Member role updated successfully',
+      data: {
+        id: updated.id,
+        userId: updated.user.id,
+        name: updated.user.name,
+        email: updated.user.email,
+        phone: updated.user.phone,
+        role: updated.role,
+      },
     };
   }
 }
