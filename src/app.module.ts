@@ -8,12 +8,15 @@ import { HealthModule } from './health/health.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
+import { DocumentModule } from './document/document.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
     WorkspaceModule,
+    DocumentModule,
     HealthModule,
   ],
   controllers: [AppController],
