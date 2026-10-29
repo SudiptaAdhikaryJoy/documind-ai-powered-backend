@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: documind-postgres
+    restart: unless-stopped
+    ports:
+      - '55432:5432'
+    environment:
+      POSTGRES_USER: documind
+      POSTGRES_PASSWORD: documind
+      POSTGRES_DB: documind
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U documind -d documind']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Optional: Local embedding model server (referenced in .env EMBED_BASE_URL=http://localhost:11434)
+  # Uncomment if you want to run Ollama in Docker:
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: documind-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - '11434:11434'
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  # ollama_data:
