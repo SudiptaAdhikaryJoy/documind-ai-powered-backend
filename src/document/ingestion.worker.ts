@@ -30,15 +30,15 @@ export class IngestionWorker
   }
 
   async onApplicationBootstrap() {
-    // Reset stuck INDEXING documents to PENDING on startup
+    // Reset stuck INDEXING or previously FAILED documents to PENDING on startup
     try {
       const reset = await this.prisma.document.updateMany({
-        where: { status: Status.INDEXING },
+        where: { status: { in: [Status.INDEXING, Status.FAILED] } },
         data: { status: Status.PENDING },
       });
       if (reset.count > 0) {
         this.logger.warn(
-          `Self-healing: reset ${reset.count} document(s) from INDEXING to PENDING`,
+          `Self-healing: reset ${reset.count} document(s) from INDEXING/FAILED to PENDING`,
         );
       }
     } catch (err: unknown) {
@@ -76,6 +76,7 @@ export class IngestionWorker
   async pollAndProcess(): Promise<void> {
     if (this.isProcessing) return;
     this.isProcessing = true;
+    let currentDocId: string | null = null;
 
     try {
       const doc = await this.prisma.document.findFirst({
@@ -93,6 +94,7 @@ export class IngestionWorker
         return;
       }
 
+      currentDocId = doc.id;
       this.logger.log(
         `Starting ingestion for document "${doc.title}" (${doc.id})`,
       );
@@ -116,9 +118,9 @@ export class IngestionWorker
 
       // Find chunks where embedding IS NULL
       const unembeddedChunks = await this.prisma.$queryRawUnsafe<
-        Array<{ id: string; content: string }>
+        Array<{ id: string; heading: string | null; content: string }>
       >(
-        `SELECT "id", "content" FROM "Chunk" WHERE "versionId" = $1 AND "embedding" IS NULL ORDER BY "ordinal" ASC`,
+        `SELECT "id", "heading", "content" FROM "Chunk" WHERE "versionId" = $1 AND "embedding" IS NULL ORDER BY "ordinal" ASC`,
         latestVersion.id,
       );
 
@@ -143,20 +145,17 @@ export class IngestionWorker
       const stack = err instanceof Error ? err.stack : undefined;
       this.logger.error(`Error processing pending document: ${msg}`, stack);
       // If we were processing a doc, mark it FAILED
-      try {
-        const stuckDoc = await this.prisma.document.findFirst({
-          where: { status: Status.INDEXING },
-        });
-        if (stuckDoc) {
+      if (currentDocId) {
+        try {
           await this.prisma.document.update({
-            where: { id: stuckDoc.id },
+            where: { id: currentDocId },
             data: { status: Status.FAILED },
           });
+        } catch (markErr: unknown) {
+          const markMsg =
+            markErr instanceof Error ? markErr.message : String(markErr);
+          this.logger.error(`Failed to mark document as FAILED: ${markMsg}`);
         }
-      } catch (markErr: unknown) {
-        const markMsg =
-          markErr instanceof Error ? markErr.message : String(markErr);
-        this.logger.error(`Failed to mark document as FAILED: ${markMsg}`);
       }
     } finally {
       this.isProcessing = false;

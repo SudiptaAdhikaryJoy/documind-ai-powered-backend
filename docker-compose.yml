@@ -17,17 +17,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # Optional: Local embedding model server (referenced in .env EMBED_BASE_URL=http://localhost:11434)
-  # Uncomment if you want to run Ollama in Docker:
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: documind-ollama
-  #   restart: unless-stopped
-  #   ports:
-  #     - '11434:11434'
-  #   volumes:
-  #     - ollama_data:/root/.ollama
+  # Local embedding model server (referenced in .env EMBED_BASE_URL=http://localhost:11434)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: documind-ollama
+    restart: unless-stopped
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama_data:/root/.ollama
 
 volumes:
   postgres_data:
-  # ollama_data:
+  ollama_data:

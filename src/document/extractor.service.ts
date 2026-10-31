@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PDFParse } from 'pdf-parse';
+import { extractText } from 'unpdf';
 
 export interface ExtractedPage {
   pageNumber: number;
@@ -129,17 +130,36 @@ export class ExtractorService {
 
   private async extractPdf(buffer: Buffer): Promise<ExtractionResult> {
     try {
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
       const pages: ExtractedPage[] = [];
+      let totalPages = 0;
 
-      for (const p of result.pages) {
-        const cleaned = this.cleanText(p.text || '');
-        if (cleaned.length > 0) {
-          pages.push({
-            pageNumber: p.num,
-            text: cleaned,
-          });
+      try {
+        const unpdfResult = await extractText(new Uint8Array(buffer), {
+          mergePages: false,
+        });
+        totalPages = unpdfResult.totalPages;
+        for (let i = 0; i < unpdfResult.text.length; i++) {
+          const cleaned = this.cleanText(unpdfResult.text[i] || '');
+          if (cleaned.length > 0) {
+            pages.push({
+              pageNumber: i + 1,
+              text: cleaned,
+            });
+          }
+        }
+      } catch {
+        // Fallback to pdf-parse if unpdf fails on edge-case streams
+        const parser = new PDFParse({ data: buffer });
+        const result = await parser.getText();
+        totalPages = result.total;
+        for (const p of result.pages) {
+          const cleaned = this.cleanText(p.text || '');
+          if (cleaned.length > 0) {
+            pages.push({
+              pageNumber: p.num,
+              text: cleaned,
+            });
+          }
         }
       }
 
@@ -151,7 +171,7 @@ export class ExtractorService {
 
       return {
         type: 'pdf',
-        pageCount: result.total || pages.length,
+        pageCount: totalPages || pages.length,
         pages,
       };
     } catch (err: unknown) {
