@@ -53,12 +53,15 @@ describe('Workspace Security & Management (e2e)', () => {
 
     // Get Workspace A id
     const wsListA = await request(app.getHttpServer())
-      .get('/workspaces')
+      .get('/workspaces/list')
       .set('Authorization', `Bearer ${userAToken}`)
       .expect(200);
 
-    expect(wsListA.body.length).toBeGreaterThanOrEqual(1);
-    workspaceAId = wsListA.body[0].id;
+    const listA = Array.isArray(wsListA.body)
+      ? wsListA.body
+      : wsListA.body.data;
+    expect(listA.length).toBeGreaterThanOrEqual(1);
+    workspaceAId = listA[0].id;
 
     // Register User B (OWNER of Workspace B)
     const resB = await request(app.getHttpServer())
@@ -77,12 +80,15 @@ describe('Workspace Security & Management (e2e)', () => {
 
     // Get Workspace B id
     const wsListB = await request(app.getHttpServer())
-      .get('/workspaces')
+      .get('/workspaces/list')
       .set('Authorization', `Bearer ${userBToken}`)
       .expect(200);
 
-    expect(wsListB.body.length).toBeGreaterThanOrEqual(1);
-    workspaceBId = wsListB.body[0].id;
+    const listB = Array.isArray(wsListB.body)
+      ? wsListB.body
+      : wsListB.body.data;
+    expect(listB.length).toBeGreaterThanOrEqual(1);
+    workspaceBId = listB[0].id;
   });
 
   afterAll(async () => {
@@ -127,9 +133,10 @@ describe('Workspace Security & Management (e2e)', () => {
         .set('Authorization', `Bearer ${userAToken}`)
         .expect(200);
 
-      expect(res.body.id).toBe(workspaceAId);
-      expect(res.body.role).toBe('OWNER');
-      expect(res.body.memberCount).toBe(1);
+      const d = res.body?.data || res.body;
+      expect(d.id).toBe(workspaceAId);
+      expect(d.role).toBe('OWNER');
+      expect(d.memberCount).toBe(1);
     });
 
     it('member gets 200 OK when passing raw token without Bearer prefix', async () => {
@@ -138,7 +145,8 @@ describe('Workspace Security & Management (e2e)', () => {
         .set('Authorization', userAToken)
         .expect(200);
 
-      expect(res.body.id).toBe(workspaceAId);
+      const d = res.body?.data || res.body;
+      expect(d.id).toBe(workspaceAId);
     });
 
     it('member gets 200 OK when Swagger formats as Bearer Bearer <token>', async () => {
@@ -147,38 +155,41 @@ describe('Workspace Security & Management (e2e)', () => {
         .set('Authorization', `Bearer Bearer ${userAToken}`)
         .expect(200);
 
-      expect(res.body.id).toBe(workspaceAId);
+      const d = res.body?.data || res.body;
+      expect(d.id).toBe(workspaceAId);
     });
   });
 
   describe('Workspace Endpoints & Roles', () => {
-    it('GET /workspaces lists user workspaces with role', async () => {
+    it('GET /workspaces/list lists user workspaces with role', async () => {
       const res = await request(app.getHttpServer())
-        .get('/workspaces')
+        .get('/workspaces/list')
         .set('Authorization', `Bearer ${userAToken}`)
         .expect(200);
 
-      expect(Array.isArray(res.body)).toBe(true);
-      const found = res.body.find((w: any) => w.id === workspaceAId);
+      const list = Array.isArray(res.body) ? res.body : res.body.data;
+      expect(Array.isArray(list)).toBe(true);
+      const found = list.find((w: any) => w.id === workspaceAId);
       expect(found).toBeDefined();
       expect(found.role).toBe('OWNER');
     });
 
-    it('POST /workspaces creates a new workspace and sets creator as OWNER', async () => {
+    it('POST /workspaces/create creates a new workspace and sets creator as OWNER', async () => {
       const res = await request(app.getHttpServer())
-        .post('/workspaces')
+        .post('/workspaces/create')
         .set('Authorization', `Bearer ${userAToken}`)
         .send({ name: `Secondary Workspace ${testSuffix}` })
         .expect(201);
 
-      expect(res.body.name).toBe(`Secondary Workspace ${testSuffix}`);
-      expect(res.body.role).toBe('OWNER');
+      const d = res.body?.data || res.body;
+      expect(d.name).toBe(`Secondary Workspace ${testSuffix}`);
+      expect(d.role).toBe('OWNER');
 
       // Cleanup
       await prisma.membership.deleteMany({
-        where: { workspaceId: res.body.id },
+        where: { workspaceId: d.id },
       });
-      await prisma.workspace.delete({ where: { id: res.body.id } });
+      await prisma.workspace.delete({ where: { id: d.id } });
     });
 
     it('GET /workspaces/:workspaceId/members lists members', async () => {
@@ -187,10 +198,11 @@ describe('Workspace Security & Management (e2e)', () => {
         .set('Authorization', `Bearer ${userAToken}`)
         .expect(200);
 
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBe(1);
-      expect(res.body[0].userId).toBe(userAId);
-      expect(res.body[0].role).toBe('OWNER');
+      const members = Array.isArray(res.body) ? res.body : res.body.data;
+      expect(Array.isArray(members)).toBe(true);
+      expect(members.length).toBe(1);
+      expect(members[0].userId).toBe(userAId);
+      expect(members[0].role).toBe('OWNER');
     });
 
     it('POST /workspaces/:workspaceId/members/invite invites User B to Workspace A', async () => {
@@ -203,8 +215,9 @@ describe('Workspace Security & Management (e2e)', () => {
         })
         .expect(201);
 
-      expect(res.body.userId).toBe(userBId);
-      expect(res.body.role).toBe('MEMBER');
+      const d = res.body?.data || res.body;
+      expect(d.userId).toBe(userBId);
+      expect(d.role).toBe('MEMBER');
 
       // Now User B should have access to Workspace A with role MEMBER
       const accessRes = await request(app.getHttpServer())
@@ -212,7 +225,8 @@ describe('Workspace Security & Management (e2e)', () => {
         .set('Authorization', `Bearer ${userBToken}`)
         .expect(200);
 
-      expect(accessRes.body.role).toBe('MEMBER');
+      const accessD = accessRes.body?.data || accessRes.body;
+      expect(accessD.role).toBe('MEMBER');
     });
 
     it('non-owner (MEMBER) gets 403 Forbidden when attempting to invite', async () => {
@@ -233,7 +247,8 @@ describe('Workspace Security & Management (e2e)', () => {
         .send({ role: 'VIEWER' })
         .expect(200);
 
-      expect(res.body.role).toBe('VIEWER');
+      const d = res.body?.data || res.body;
+      expect(d.role).toBe('VIEWER');
 
       // Verify User B now has VIEWER role
       const accessRes = await request(app.getHttpServer())
@@ -241,7 +256,8 @@ describe('Workspace Security & Management (e2e)', () => {
         .set('Authorization', `Bearer ${userBToken}`)
         .expect(200);
 
-      expect(accessRes.body.role).toBe('VIEWER');
+      const accessD = accessRes.body?.data || accessRes.body;
+      expect(accessD.role).toBe('VIEWER');
     });
 
     it('cannot demote sole OWNER', async () => {
