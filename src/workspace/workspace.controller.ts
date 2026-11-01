@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -29,7 +30,9 @@ import { WorkspaceGuard } from '../common/guards/workspace.guard';
 import { RequestScope } from '../common/interfaces/scope.interface';
 import { JwtUserPayload } from '../auth/jwt.strategy';
 import {
+  AcceptInviteDto,
   CreateWorkspaceDto,
+  DeleteWorkspaceDto,
   InviteMemberDto,
   MemberItemDto,
   UpdateMemberRoleDto,
@@ -63,6 +66,17 @@ export class WorkspaceController {
     @Body() dto: CreateWorkspaceDto,
   ) {
     return this.workspaceService.createWorkspace(user.userId, dto);
+  }
+
+  @ApiOperation({ summary: 'Accept workspace invitation via email token' })
+  @ApiBody({ type: AcceptInviteDto })
+  @ApiOkResponse({ description: 'Joined workspace successfully' })
+  @Post('invites/accept')
+  acceptInvite(
+    @CurrentUser() user: JwtUserPayload,
+    @Body() dto: AcceptInviteDto,
+  ) {
+    return this.workspaceService.acceptInvite(user.userId, dto);
   }
 
   @ApiOperation({ summary: 'Get workspace details' })
@@ -137,5 +151,33 @@ export class WorkspaceController {
     @Body() dto: UpdateMemberRoleDto,
   ) {
     return this.workspaceService.updateMemberRole(scope, targetUserId, dto);
+  }
+
+  @ApiOperation({ summary: 'Request step-up 2FA OTP for sensitive action (OWNER only)' })
+  @ApiParam({
+    name: 'workspaceId',
+    description: 'Workspace UUID',
+  })
+  @UseGuards(WorkspaceGuard, RolesGuard)
+  @Roles(Role.OWNER)
+  @Post(':workspaceId/step-up/request')
+  requestStepUp(@Scope() scope: RequestScope) {
+    return this.workspaceService.requestStepUp(scope);
+  }
+
+  @ApiOperation({ summary: 'Permanently delete a workspace (OWNER only, with step-up OTP)' })
+  @ApiParam({
+    name: 'workspaceId',
+    description: 'Workspace UUID',
+  })
+  @ApiBody({ type: DeleteWorkspaceDto, required: false })
+  @UseGuards(WorkspaceGuard, RolesGuard)
+  @Roles(Role.OWNER)
+  @Delete(':workspaceId')
+  deleteWorkspace(
+    @Scope() scope: RequestScope,
+    @Body() dto?: DeleteWorkspaceDto,
+  ) {
+    return this.workspaceService.deleteWorkspace(scope, dto);
   }
 }

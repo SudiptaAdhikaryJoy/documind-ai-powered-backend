@@ -99,3 +99,17 @@ export class MemberItemDto {
   @ApiProperty()
   joinedAt: Date;
 }
+
+export class AcceptInviteDto {
+  @ApiProperty({ example: 'inv_token_hex_string', description: 'Invitation token received via email' })
+  @IsString()
+  token: string;
+}
+
+export class DeleteWorkspaceDto {
+  @ApiPropertyOptional({ example: '123456', description: '6-digit step-up OTP sent to workspace owner' })
+  @IsOptional()
+  @IsString()
+  stepUpOtp?: string;
+}
+

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, ValidateIf } from 'class-validator';
+import { IsEmail, IsEnum, IsString, Length, MinLength, ValidateIf } from 'class-validator';
+import { OtpPurpose } from '@prisma/client';
 
 export class RegisterDto {
   @ApiProperty({ example: 'jane@acme.com', description: 'Must be unique' })
@@ -147,3 +148,70 @@ export class ValidationErrorDto {
   @ApiProperty({ example: 'Bad Request' })
   error: string;
 }
+
+export class VerifyOtpDto {
+  @ApiProperty({ example: 'jane@acme.com', description: 'Target email address or phone number' })
+  @IsString()
+  target: string;
+
+  @ApiProperty({ example: '123456', description: '6-digit OTP' })
+  @IsString()
+  @Length(6, 6)
+  code: string;
+
+  @ApiProperty({ enum: OtpPurpose, example: OtpPurpose.SIGNUP_EMAIL_VERIFICATION })
+  @IsEnum(OtpPurpose)
+  purpose: OtpPurpose;
+}
+
+export class ResendOtpDto {
+  @ApiProperty({ example: 'jane@acme.com', description: 'Target email address or phone number' })
+  @IsString()
+  target: string;
+
+  @ApiProperty({ enum: OtpPurpose, example: OtpPurpose.SIGNUP_EMAIL_VERIFICATION })
+  @IsEnum(OtpPurpose)
+  purpose: OtpPurpose;
+}
+
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'jane@acme.com', description: 'Registered email or phone number' })
+  @IsString()
+  target: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'jane@acme.com', description: 'Registered email or phone number' })
+  @IsString()
+  target: string;
+
+  @ApiProperty({ example: '123456', description: '6-digit verification code' })
+  @IsString()
+  @Length(6, 6)
+  code: string;
+
+  @ApiProperty({ example: 'NewSecretPass123!', minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  newPassword: string;
+}
+
+export class PhoneLoginRequestDto {
+  @ApiProperty({ example: '01712345678', minLength: 11 })
+  @IsString()
+  @MinLength(11)
+  phone: string;
+}
+
+export class PhoneLoginVerifyDto {
+  @ApiProperty({ example: '01712345678', minLength: 11 })
+  @IsString()
+  @MinLength(11)
+  phone: string;
+
+  @ApiProperty({ example: '123456', description: '6-digit OTP received via SMS' })
+  @IsString()
+  @Length(6, 6)
+  code: string;
+}
+

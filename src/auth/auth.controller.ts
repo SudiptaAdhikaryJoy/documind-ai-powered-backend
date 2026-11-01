@@ -13,12 +13,18 @@ import {
 import {
   AuthResponseDto,
   ErrorDto,
+  ForgotPasswordDto,
   LoginDto,
+  PhoneLoginRequestDto,
+  PhoneLoginVerifyDto,
   RefreshDto,
   RegisterDto,
+  ResendOtpDto,
+  ResetPasswordDto,
   SuccessDto,
   TokenPairDto,
   ValidationErrorDto,
+  VerifyOtpDto,
 } from './dto/auth.dto';
 import { AuthService } from './auth.service';
 
@@ -34,11 +40,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Create a user and their first workspace' })
   @ApiBody({ type: RegisterDto })
   @ApiCreatedResponse({
-    description: 'Registered; tokens issued',
+    description: 'Registered; tokens issued and verification OTPs sent',
     type: AuthResponseDto,
   })
   @ApiConflictResponse({
-    description: 'Email already registered',
+    description: 'Email or phone already registered',
     type: ErrorDto,
   })
   @Post('register')
@@ -46,7 +52,7 @@ export class AuthController {
     return this.auth.register(dto);
   }
 
-  @ApiOperation({ summary: 'Log in with email and password' })
+  @ApiOperation({ summary: 'Log in with email or phone and password' })
   @ApiBody({ type: LoginDto })
   @ApiCreatedResponse({ description: 'Tokens issued', type: AuthResponseDto })
   @ApiUnauthorizedResponse({
@@ -56,6 +62,57 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto);
+  }
+
+  @ApiOperation({ summary: 'Verify email or phone OTP' })
+  @ApiBody({ type: VerifyOtpDto })
+  @ApiCreatedResponse({ description: 'Verification successful', type: SuccessDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired code', type: ErrorDto })
+  @Post('otp/verify')
+  verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.auth.verifyOtp(dto);
+  }
+
+  @ApiOperation({ summary: 'Resend OTP to email or phone' })
+  @ApiBody({ type: ResendOtpDto })
+  @ApiCreatedResponse({ description: 'Verification code resent' })
+  @Post('otp/resend')
+  resendOtp(@Body() dto: ResendOtpDto) {
+    return this.auth.resendOtp(dto);
+  }
+
+  @ApiOperation({ summary: 'Request password reset code via email or SMS' })
+  @ApiBody({ type: ForgotPasswordDto })
+  @ApiCreatedResponse({ description: 'Password reset code dispatched' })
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto);
+  }
+
+  @ApiOperation({ summary: 'Reset password using OTP code' })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiCreatedResponse({ description: 'Password reset successfully' })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired code', type: ErrorDto })
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetPassword(dto);
+  }
+
+  @ApiOperation({ summary: 'Request passwordless login code via SMS OTP' })
+  @ApiBody({ type: PhoneLoginRequestDto })
+  @ApiCreatedResponse({ description: 'Login code dispatched to phone' })
+  @Post('login-otp/request')
+  requestPhoneLogin(@Body() dto: PhoneLoginRequestDto) {
+    return this.auth.requestPhoneLogin(dto);
+  }
+
+  @ApiOperation({ summary: 'Verify phone login OTP and issue token pair' })
+  @ApiBody({ type: PhoneLoginVerifyDto })
+  @ApiCreatedResponse({ description: 'Tokens issued', type: AuthResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid or expired code', type: ErrorDto })
+  @Post('login-otp/verify')
+  verifyPhoneLogin(@Body() dto: PhoneLoginVerifyDto) {
+    return this.auth.verifyPhoneLogin(dto);
   }
 
   @ApiOperation({

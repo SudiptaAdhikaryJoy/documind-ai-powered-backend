@@ -3,11 +3,13 @@ import {
   Logger,
   OnApplicationBootstrap,
   OnApplicationShutdown,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, Status } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmbeddingService } from './embedding.service';
+import { NotificationService } from '../communication/notification/notification.service';
 
 type DocumentWithLatestVersion = Prisma.DocumentGetPayload<{
   include: {
@@ -125,6 +127,7 @@ export class IngestionWorker
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly embeddingService: EmbeddingService,
+    @Optional() private readonly notifications?: NotificationService,
   ) {
     this.pollIntervalMs = parseInt(
       this.config.get<string>('WORKER_POLL_MS', '5000'),
@@ -261,6 +264,10 @@ export class IngestionWorker
       this.logger.log(
         `Document "${doc.title}" (${doc.id}) successfully indexed and READY`,
       );
+
+      if (this.notifications) {
+        void this.notifyDocStatus(doc, true).catch(() => undefined);
+      }
     } catch (err: unknown) {
       if (isDatabaseConnectionError(err)) {
         this.logger.warn(
@@ -294,11 +301,50 @@ export class IngestionWorker
           where: { id: doc.id },
           data: { status: Status.FAILED },
         });
+
+        if (this.notifications) {
+          void this.notifyDocStatus(doc, false, msg).catch(() => undefined);
+        }
       } catch (markErr: unknown) {
         const markMsg =
           markErr instanceof Error ? markErr.message : String(markErr);
         this.logger.error(`Failed to mark document as FAILED: ${markMsg}`);
       }
+    }
+  }
+
+  private async notifyDocStatus(
+    doc: { id: string; title: string; workspaceId: string },
+    isReady: boolean,
+    reason?: string,
+  ): Promise<void> {
+    try {
+      const ownerMembership = await this.prisma.membership.findFirst({
+        where: { workspaceId: doc.workspaceId, role: 'OWNER' },
+        include: {
+          user: { select: { email: true } },
+          workspace: { select: { name: true } },
+        },
+      });
+
+      if (ownerMembership?.user?.email) {
+        if (isReady) {
+          await this.notifications?.notifyDocumentReady(
+            ownerMembership.user.email,
+            doc.title,
+            ownerMembership.workspace.name,
+          );
+        } else {
+          await this.notifications?.notifyDocumentRejected(
+            ownerMembership.user.email,
+            doc.title,
+            reason ?? 'Processing failure',
+            ownerMembership.workspace.name,
+          );
+        }
+      }
+    } catch {
+      // Notification errors must never crash worker
     }
   }
 
