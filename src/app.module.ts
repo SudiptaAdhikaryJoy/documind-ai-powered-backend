@@ -9,11 +9,13 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 import { DocumentModule } from './document/document.module';
+import { CommunicationModule } from './communication/communication.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    CommunicationModule,
     AuthModule,
     WorkspaceModule,
     DocumentModule,

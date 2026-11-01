@@ -26,6 +26,14 @@ enum Status {
     FAILED
 }
 
+enum OtpPurpose {
+    SIGNUP_EMAIL_VERIFICATION
+    SIGNUP_PHONE_VERIFICATION
+    PASSWORD_RESET
+    PHONE_LOGIN
+    STEP_UP_ACTION
+}
+
 model RefreshToken {
     id        String    @id @default(uuid())
     userId    String
@@ -39,28 +47,58 @@ model RefreshToken {
 }
 
 model User {
-    id            String         @id @default(uuid())
-    email         String         @unique
-    phone         String         @unique
-    password      String
-    name          String
-    createdAt     DateTime       @default(now())
-    members       Membership[]
-    refreshTokens RefreshToken[]
+    id              String         @id @default(uuid())
+    email           String         @unique
+    phone           String         @unique
+    password        String
+    name            String
+    isEmailVerified Boolean        @default(false)
+    isPhoneVerified Boolean        @default(false)
+    createdAt       DateTime       @default(now())
+    members         Membership[]
+    refreshTokens   RefreshToken[]
 
     @@unique([id, name])
 }
 
 model Workspace {
-    id        String       @id @default(uuid())
+    id        String            @id @default(uuid())
     name      String
-    plan      Plan         @default(FREE)
-    createdAt DateTime     @default(now())
+    plan      Plan              @default(FREE)
+    createdAt DateTime          @default(now())
     members   Membership[]
-
     documents Document[]
+    invites   WorkspaceInvite[]
 
     @@unique([id, name])
+}
+
+model Otp {
+    id          String     @id @default(uuid())
+    target      String
+    codeHash    String
+    purpose     OtpPurpose
+    attempts    Int        @default(0)
+    maxAttempts Int        @default(5)
+    expiresAt   DateTime
+    consumedAt  DateTime?
+    createdAt   DateTime   @default(now())
+
+    @@index([target, purpose])
+}
+
+model WorkspaceInvite {
+    id          String    @id @default(uuid())
+    workspaceId String
+    email       String
+    role        Role      @default(MEMBER)
+    tokenHash   String    @unique
+    expiresAt   DateTime
+    acceptedAt  DateTime?
+    createdAt   DateTime  @default(now())
+    workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+    @@index([workspaceId, email])
 }
 
 model Membership {

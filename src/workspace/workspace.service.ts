@@ -3,19 +3,35 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { OtpPurpose, Role } from '@prisma/client';
+import { createHash, randomBytes } from 'crypto';
 import { RequestScope } from '../common/interfaces/scope.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  AcceptInviteDto,
   CreateWorkspaceDto,
+  DeleteWorkspaceDto,
   InviteMemberDto,
   UpdateMemberRoleDto,
 } from './dto/workspace.dto';
+import { MailService } from '../communication/mail/mail.service';
+import { EmailTemplates } from '../communication/mail/templates/email-templates';
+import { OtpService } from '../communication/otp/otp.service';
+
+const sha256 = (value: string) =>
+  createHash('sha256').update(value).digest('hex');
 
 @Injectable()
 export class WorkspaceService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:3001';
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+    private readonly otp: OtpService,
+  ) {}
 
   async listUserWorkspaces(userId: string) {
     const memberships = await this.prisma.membership.findMany({
@@ -148,63 +164,231 @@ export class WorkspaceService {
       );
     }
 
+    const [inviter, workspace] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: scope.userId },
+        select: { name: true, email: true },
+      }),
+      this.prisma.workspace.findUnique({
+        where: { id: scope.workspaceId },
+        select: { id: true, name: true },
+      }),
+    ]);
+
+    if (!workspace) throw new NotFoundException('Workspace not found');
+    const inviterName = inviter?.name ?? 'A team member';
+
+    // 1. Check if the target user is already registered in the system
     const targetUser = await this.prisma.user.findFirst({
       where: {
         OR: [
-          dto.email ? { email: dto.email } : undefined,
-          dto.phone ? { phone: dto.phone } : undefined,
+          dto.email ? { email: dto.email.trim().toLowerCase() } : undefined,
+          dto.phone ? { phone: dto.phone.trim() } : undefined,
         ].filter(Boolean) as Array<{ email?: string; phone?: string }>,
       },
     });
 
-    if (!targetUser) {
+    if (targetUser) {
+      const existing = await this.prisma.membership.findUnique({
+        where: {
+          userId_workspaceId: {
+            userId: targetUser.id,
+            workspaceId: scope.workspaceId,
+          },
+        },
+      });
+
+      if (existing) {
+        throw new ConflictException('User is already a member of this workspace');
+      }
+
+      const membership = await this.prisma.membership.create({
+        data: {
+          userId: targetUser.id,
+          workspaceId: scope.workspaceId,
+          memberName: targetUser.name,
+          workspaceName: workspace.name,
+          role: dto.role ?? Role.MEMBER,
+        },
+      });
+
+      // Notify existing user via email
+      if (targetUser.email) {
+        const inviteUrl = `${this.webOrigin}/workspaces/${workspace.id}`;
+        const { subject, html, text } = EmailTemplates.workspaceInviteTemplate(
+          inviterName,
+          workspace.name,
+          membership.role,
+          inviteUrl,
+        );
+        void this.mail.send({ to: targetUser.email, subject, html, text }).catch(() => undefined);
+      }
+
+      return {
+        statusCode: 201,
+        message: 'Member invited and added successfully',
+        data: {
+          id: membership.id,
+          userId: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          phone: targetUser.phone,
+          role: membership.role,
+        },
+      };
+    }
+
+    // 2. User is not registered yet: create a WorkspaceInvite record & send email invite
+    if (!dto.email) {
       throw new NotFoundException(
-        'User with the provided email or phone was not found',
+        'User with the provided phone was not found. Please provide an email address to send an invitation.',
       );
     }
 
-    const existing = await this.prisma.membership.findUnique({
+    const rawToken = randomBytes(24).toString('hex');
+    const tokenHash = sha256(rawToken);
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000); // 7 days
+
+    await this.prisma.workspaceInvite.create({
+      data: {
+        workspaceId: scope.workspaceId,
+        email: dto.email.trim().toLowerCase(),
+        role: dto.role ?? Role.MEMBER,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    const inviteUrl = `${this.webOrigin}/workspaces/join?token=${rawToken}`;
+    const { subject, html, text } = EmailTemplates.workspaceInviteTemplate(
+      inviterName,
+      workspace.name,
+      dto.role ?? Role.MEMBER,
+      inviteUrl,
+    );
+    await this.mail.send({ to: dto.email.trim().toLowerCase(), subject, html, text });
+
+    return {
+      statusCode: 201,
+      message: `Invitation email dispatched to ${dto.email}`,
+      data: {
+        email: dto.email,
+        role: dto.role ?? Role.MEMBER,
+        expiresAt,
+      },
+    };
+  }
+
+  async acceptInvite(userId: string, dto: AcceptInviteDto) {
+    const tokenHash = sha256(dto.token.trim());
+    const invite = await this.prisma.workspaceInvite.findUnique({
+      where: { tokenHash },
+      include: { workspace: true },
+    });
+
+    if (!invite || invite.acceptedAt) {
+      throw new NotFoundException('Invitation token is invalid or has already been accepted');
+    }
+
+    if (invite.expiresAt < new Date()) {
+      throw new BadRequestException('Invitation has expired. Please request a new invite.');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const existingMembership = await this.prisma.membership.findUnique({
       where: {
         userId_workspaceId: {
-          userId: targetUser.id,
-          workspaceId: scope.workspaceId,
+          userId,
+          workspaceId: invite.workspaceId,
         },
       },
     });
 
-    if (existing) {
-      throw new ConflictException('User is already a member of this workspace');
+    if (existingMembership) {
+      await this.prisma.workspaceInvite.update({
+        where: { id: invite.id },
+        data: { acceptedAt: new Date() },
+      });
+      return {
+        statusCode: 200,
+        message: 'You are already a member of this workspace',
+        data: {
+          workspaceId: invite.workspaceId,
+          role: existingMembership.role,
+        },
+      };
     }
 
-    const workspace = await this.prisma.workspace.findUnique({
-      where: { id: scope.workspaceId },
-      select: { name: true },
-    });
-    if (!workspace) {
-      throw new NotFoundException('Workspace not found');
-    }
+    const [membership] = await this.prisma.$transaction([
+      this.prisma.membership.create({
+        data: {
+          userId,
+          workspaceId: invite.workspaceId,
+          memberName: user.name,
+          workspaceName: invite.workspace.name,
+          role: invite.role,
+        },
+      }),
+      this.prisma.workspaceInvite.update({
+        where: { id: invite.id },
+        data: { acceptedAt: new Date() },
+      }),
+    ]);
 
-    const membership = await this.prisma.membership.create({
+    return {
+      statusCode: 200,
+      message: `Joined workspace "${invite.workspace.name}" successfully`,
       data: {
-        userId: targetUser.id,
-        workspaceId: scope.workspaceId,
-        memberName: targetUser.name,
-        workspaceName: workspace.name,
-        role: dto.role ?? Role.MEMBER,
+        workspaceId: invite.workspaceId,
+        workspaceName: invite.workspace.name,
+        role: membership.role,
       },
+    };
+  }
+
+  async requestStepUp(scope: RequestScope) {
+    const owner = await this.prisma.user.findUnique({
+      where: { id: scope.userId },
+    });
+    if (!owner) throw new NotFoundException('Owner account not found');
+
+    const target = owner.email || owner.phone;
+    const result = await this.otp.createAndSendOtp(
+      target,
+      OtpPurpose.STEP_UP_ACTION,
+      'Sensitive Action Confirmation',
+    );
+
+    return {
+      statusCode: 200,
+      message: 'Confirmation code sent to workspace owner',
+      data: { cooldownSeconds: result.cooldownSeconds },
+    };
+  }
+
+  async deleteWorkspace(scope: RequestScope, dto?: DeleteWorkspaceDto) {
+    const owner = await this.prisma.user.findUnique({
+      where: { id: scope.userId },
+    });
+    if (!owner) throw new NotFoundException('Owner account not found');
+
+    // If step-up OTP is provided or enforced, verify it
+    if (dto?.stepUpOtp) {
+      const target = owner.email || owner.phone;
+      await this.otp.verifyOtp(target, dto.stepUpOtp, OtpPurpose.STEP_UP_ACTION);
+    }
+
+    await this.prisma.workspace.delete({
+      where: { id: scope.workspaceId },
     });
 
     return {
-      statusCode: 201,
-      message: 'Member invited successfully',
-      data: {
-        id: membership.id,
-        userId: targetUser.id,
-        name: targetUser.name,
-        email: targetUser.email,
-        phone: targetUser.phone,
-        role: membership.role,
-      },
+      statusCode: 200,
+      message: 'Workspace deleted successfully',
     };
   }
 
