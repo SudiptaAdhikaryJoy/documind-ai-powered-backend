@@ -104,3 +104,4 @@ Located in `src/document/`:
 | **Day 11** | Version diff (`GET /documents/:id/diff`) and change review (`POST /documents/:id/review`) | Pending |
 | **Day 12** | Evaluation suite (`POST /eval/run`, `GET /eval/runs`) with recorded recall/citation metrics | Pending |
 | **Days 13–15** | Docker Compose production packaging, CI, README & demo | Pending |
+| **Post-Day 15** | Advanced Add-Ons: Alert Triage, CLI, Git Sync, Doc Drift (See [`ADDONS_CONTEXT.md`](ADDONS_CONTEXT.md)) | Planned |
