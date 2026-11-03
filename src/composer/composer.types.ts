@@ -65,3 +65,72 @@ export interface ComposerOptions {
   llm?: LlmCompletionOptions;
   prompt?: PromptBuilderOptions;
 }
+
+export type SseEventType =
+  | 'evidence'
+  | 'token'
+  | 'abstained'
+  | 'done'
+  | 'error';
+
+export interface SseEvidenceEvent {
+  type: 'evidence';
+  data: {
+    searchedDocuments: string[];
+    pool: Array<{
+      id: string;
+      sourceId: string;
+      documentId: string;
+      documentTitle: string;
+      versionLabel: string;
+      pageNumber: number;
+      heading: string | null;
+      score: number;
+      content: string;
+    }>;
+  };
+}
+
+export interface SseTokenEvent {
+  type: 'token';
+  data: {
+    token: string;
+  };
+}
+
+export interface SseAbstainedEvent {
+  type: 'abstained';
+  data: {
+    abstained: true;
+    reason: AbstentionReason;
+    message: string;
+    searchedDocuments: string[];
+  };
+}
+
+export interface SseDoneEvent {
+  type: 'done';
+  data: {
+    answer: string;
+    citations: Evidence[];
+    promptTokens: number;
+    outputTokens: number;
+    latencyMs: number;
+    model: string;
+  };
+}
+
+export interface SseErrorEvent {
+  type: 'error';
+  data: {
+    message: string;
+  };
+}
+
+export type SseStreamEvent =
+  | SseEvidenceEvent
+  | SseTokenEvent
+  | SseAbstainedEvent
+  | SseDoneEvent
+  | SseErrorEvent;
+

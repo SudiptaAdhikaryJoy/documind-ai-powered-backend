@@ -100,4 +100,53 @@ describe('QueryLogService', () => {
     expect(stats.abstentionRate).toBe('0.3000');
     expect(stats.avgLatencyMs).toBe(600);
   });
+
+  it('retrieves paginated query logs with total count', async () => {
+    const mockLogs = [{ id: 'log-1' }, { id: 'log-2' }];
+    jest.spyOn(prisma.queryLog, 'findMany').mockResolvedValueOnce(mockLogs as any);
+    jest.spyOn(prisma.queryLog, 'count').mockResolvedValueOnce(50);
+
+    const result = await service.listWorkspaceLogsPaginated('ws-123', 10, 20);
+
+    expect(prisma.queryLog.findMany).toHaveBeenCalledWith({
+      where: { workspaceId: 'ws-123' },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      skip: 20,
+    });
+    expect(prisma.queryLog.count).toHaveBeenCalledWith({
+      where: { workspaceId: 'ws-123' },
+    });
+    expect(result).toEqual({
+      items: mockLogs,
+      total: 50,
+      limit: 10,
+      offset: 20,
+    });
+  });
+
+  it('retrieves a single query log by ID', async () => {
+    (prisma.queryLog as any).findFirst = jest.fn().mockResolvedValueOnce({ id: 'log-1', workspaceId: 'ws-123' });
+
+    const result = await service.getQueryLogById('ws-123', 'log-1');
+
+    expect((prisma.queryLog as any).findFirst).toHaveBeenCalledWith({
+      where: { id: 'log-1', workspaceId: 'ws-123' },
+    });
+    expect(result).toEqual({ id: 'log-1', workspaceId: 'ws-123' });
+  });
+
+  it('counts queries for current month', async () => {
+    jest.spyOn(prisma.queryLog, 'count').mockResolvedValueOnce(42);
+
+    const count = await service.countMonthlyQueries('ws-123');
+
+    expect(count).toBe(42);
+    expect(prisma.queryLog.count).toHaveBeenCalledWith({
+      where: {
+        workspaceId: 'ws-123',
+        createdAt: { gte: expect.any(Date) },
+      },
+    });
+  });
 });

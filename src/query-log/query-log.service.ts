@@ -57,6 +57,58 @@ export class QueryLogService {
   }
 
   /**
+   * Retrieves paginated query logs for a workspace.
+   */
+  async listWorkspaceLogsPaginated(
+    workspaceId: string,
+    limit: number = 20,
+    offset: number = 0,
+  ) {
+    const [items, total] = await Promise.all([
+      this.prisma.queryLog.findMany({
+        where: { workspaceId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.queryLog.count({
+        where: { workspaceId },
+      }),
+    ]);
+
+    return {
+      items,
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  /**
+   * Retrieves a single query log by ID within a workspace.
+   */
+  async getQueryLogById(workspaceId: string, id: string) {
+    return this.prisma.queryLog.findFirst({
+      where: { id, workspaceId },
+    });
+  }
+
+  /**
+   * Counts the number of queries executed by a workspace during the current calendar month.
+   */
+  async countMonthlyQueries(workspaceId: string): Promise<number> {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    return this.prisma.queryLog.count({
+      where: {
+        workspaceId,
+        createdAt: { gte: startOfMonth },
+      },
+    });
+  }
+
+  /**
    * Retrieves telemetry statistics for a workspace.
    */
   async getWorkspaceStats(workspaceId: string) {

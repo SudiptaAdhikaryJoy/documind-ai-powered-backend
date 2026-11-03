@@ -5,6 +5,10 @@ import { EvidenceService } from '../evidence/evidence.service';
 import { RawEvidenceCandidate } from '../evidence/evidence.types';
 import { LlmService } from '../llm/llm.service';
 import { QueryLogService } from '../query-log/query-log.service';
+import { ConfigService } from '@nestjs/config';
+import { ForbiddenException } from '@nestjs/common';
+import { Plan } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { ComposerService } from './composer.service';
 
 describe('ComposerService', () => {
@@ -12,6 +16,7 @@ describe('ComposerService', () => {
   let evidenceService: EvidenceService;
   let llmService: LlmService;
   let queryLogService: QueryLogService;
+  let prisma: PrismaService;
 
   const mockScope: RequestScope = {
     userId: 'user-123',
@@ -64,6 +69,26 @@ describe('ComposerService', () => {
           provide: QueryLogService,
           useValue: {
             log: jest.fn().mockResolvedValue({ id: 'log-1' }),
+            countMonthlyQueries: jest.fn().mockResolvedValue(10),
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            workspace: {
+              findUnique: jest
+                .fn()
+                .mockResolvedValue({ id: 'ws-456', plan: Plan.FREE }),
+            },
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string, defaultVal?: string) => {
+              if (key === 'FREE_MAX_QUESTIONS_PER_MONTH') return '100';
+              return defaultVal;
+            }),
           },
         },
       ],
@@ -73,6 +98,7 @@ describe('ComposerService', () => {
     evidenceService = module.get<EvidenceService>(EvidenceService);
     llmService = module.get<LlmService>(LlmService);
     queryLogService = module.get<QueryLogService>(QueryLogService);
+    prisma = module.get<PrismaService>(PrismaService);
   });
 
   it('composes valid answer with citations and records telemetry when evidence is strong', async () => {
@@ -278,6 +304,148 @@ describe('ComposerService', () => {
     expect(llmService.complete).toHaveBeenCalledWith({
       messages: expect.any(Array),
       options: { model: 'custom-model', temperature: 0.1 },
+    });
+  });
+
+  describe('checkPlanLimits', () => {
+    it('throws ForbiddenException when free tier monthly query limit is exceeded', async () => {
+      jest
+        .spyOn(queryLogService, 'countMonthlyQueries')
+        .mockResolvedValueOnce(100);
+
+      await expect(
+        service.composeAnswer('Question', mockScope),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows query when workspace is on Team or Business tier regardless of count', async () => {
+      jest
+        .spyOn(prisma.workspace, 'findUnique')
+        .mockResolvedValueOnce({ id: 'ws-456', plan: Plan.TEAM } as any);
+      jest
+        .spyOn(queryLogService, 'countMonthlyQueries')
+        .mockResolvedValueOnce(500);
+
+      jest.spyOn(evidenceService, 'retrieveEvidence').mockResolvedValueOnce({
+        evidences: [],
+        pool: new EvidencePool(),
+        abstained: true,
+        searchedDocumentTitles: [],
+      });
+
+      const res = await service.composeAnswer('Question', mockScope);
+      expect(res.abstained).toBe(true);
+    });
+  });
+
+  describe('streamAnswer', () => {
+    it('yields abstained event when Gate 1 triggers', async () => {
+      jest.spyOn(evidenceService, 'retrieveEvidence').mockResolvedValueOnce({
+        evidences: [],
+        pool: new EvidencePool(),
+        abstained: true,
+        searchedDocumentTitles: ['Guide.pdf'],
+      });
+
+      const events: any[] = [];
+      for await (const event of service.streamAnswer('Test question', mockScope)) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('abstained');
+      expect(events[0].data.reason).toBe('INSUFFICIENT_EVIDENCE_GATE_1');
+      expect(events[0].data.searchedDocuments).toEqual(['Guide.pdf']);
+      expect(queryLogService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          abstained: true,
+          reason: 'INSUFFICIENT_EVIDENCE_GATE_1',
+        }),
+      );
+    });
+
+    it('yields evidence, token, and done events when query succeeds with verified citations', async () => {
+      const pool = new EvidencePool();
+      const ev1 = pool.add(mockCandidate1);
+      const ev2 = pool.add(mockCandidate2);
+
+      jest.spyOn(evidenceService, 'retrieveEvidence').mockResolvedValueOnce({
+        evidences: pool.getAll(),
+        pool,
+        abstained: false,
+        searchedDocumentTitles: ['Payments Architecture.pdf'],
+      });
+
+      jest.spyOn(llmService, 'complete').mockResolvedValueOnce({
+        content: 'Use idempotency key [e1] and wait 30 days [e2].',
+        promptTokens: 250,
+        outputTokens: 40,
+        latencyMs: 900,
+        model: 'qwen/qwen3.8-27b',
+      });
+
+      jest.spyOn(evidenceService, 'verifyCitations').mockReturnValueOnce({
+        isValid: true,
+        citations: [ev1, ev2],
+        invalidIds: [],
+      });
+
+      const events: any[] = [];
+      for await (const event of service.streamAnswer('How do retries work?', mockScope)) {
+        events.push(event);
+      }
+
+      // First event: evidence
+      expect(events[0].type).toBe('evidence');
+      expect(events[0].data.pool).toHaveLength(2);
+      expect(events[0].data.searchedDocuments).toEqual(['Payments Architecture.pdf']);
+
+      // Middle events: tokens
+      const tokenEvents = events.filter((e) => e.type === 'token');
+      expect(tokenEvents.length).toBeGreaterThan(0);
+
+      // Last event: done
+      const lastEvent = events[events.length - 1];
+      expect(lastEvent.type).toBe('done');
+      expect(lastEvent.data.answer).toBe('Use idempotency key [e1] and wait 30 days [e2].');
+      expect(lastEvent.data.citations).toHaveLength(2);
+      expect(lastEvent.data.model).toBe('qwen/qwen3.8-27b');
+    });
+
+    it('yields abstained event when Gate 2 detects hallucinated citation IDs', async () => {
+      const pool = new EvidencePool();
+      pool.add(mockCandidate1);
+
+      jest.spyOn(evidenceService, 'retrieveEvidence').mockResolvedValueOnce({
+        evidences: pool.getAll(),
+        pool,
+        abstained: false,
+        searchedDocumentTitles: ['Payments Architecture.pdf'],
+      });
+
+      jest.spyOn(llmService, 'complete').mockResolvedValueOnce({
+        content: 'Fake fact citing nonexistent doc [e999].',
+        promptTokens: 200,
+        outputTokens: 20,
+        latencyMs: 500,
+        model: 'qwen/qwen3.8-27b',
+      });
+
+      jest.spyOn(evidenceService, 'verifyCitations').mockReturnValueOnce({
+        isValid: false,
+        citations: [],
+        invalidIds: ['e999'],
+      });
+
+      const events: any[] = [];
+      for await (const event of service.streamAnswer('Fake query', mockScope)) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(2);
+      expect(events[0].type).toBe('evidence');
+      expect(events[1].type).toBe('abstained');
+      expect(events[1].data.reason).toBe('CITATION_MISMATCH_GATE_2');
     });
   });
 });
