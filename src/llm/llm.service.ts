@@ -36,9 +36,11 @@ export class LlmService {
 
     const apiKey = opts?.apiKey ?? this.config.get<string>('LLM_API_KEY');
 
+    const requestedModel = opts?.model?.trim();
     const model =
-      opts?.model ??
-      this.config.get<string>('LLM_MODEL', 'qwen/qwen3.8-27b');
+      (requestedModel && requestedModel !== '' && requestedModel !== 'model'
+        ? requestedModel
+        : null) ?? this.config.get<string>('LLM_MODEL', 'qwen/qwen3.8-27b');
 
     const temperature =
       opts?.temperature ??
@@ -74,11 +76,11 @@ export class LlmService {
       max_tokens: maxTokens,
     };
 
-    // Explicitly pass think: false to supported reasoning/hybrid models (e.g. Qwen, DeepSeek)
-    if (think === false) {
+    // Only pass provider-specific 'think: false' to local Ollama endpoints.
+    // Hosted providers (Groq, OpenAI) strictly forbid non-standard schema fields.
+    const isOllama = baseUrl.includes('11434') || baseUrl.includes('ollama');
+    if (think === false && isOllama) {
       payload.think = false;
-      // Some OpenAI-compatible gateways expect chat_template_kwargs or extra_body
-      payload.chat_template_kwargs = { think: false };
     }
 
     const startTime = Date.now();

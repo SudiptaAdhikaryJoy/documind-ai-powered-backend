@@ -12,6 +12,10 @@ export class PromptBuilder {
    * Explicitly treats document text as untrusted data to prevent prompt injection.
    */
   static buildSystemPrompt(options?: PromptBuilderOptions): string {
+    if (options?.customSystemInstruction) {
+      return options.customSystemInstruction;
+    }
+
     const maxSentences = options?.maxSentences ?? 4;
 
     return `You answer questions using only the passages provided.

@@ -99,8 +99,8 @@ Located in `src/document/`:
 | **Days 1–2** | PostgreSQL + `pgvector` HNSW migration, NestJS scaffold, Prisma schema | **Done** |
 | **Day 3** | Auth (`register`, `login`, `refresh` rotation & reuse detection, `logout`), Workspaces & RBAC, Health, Swagger | **Done** |
 | **Days 4–5** | Document upload, magic-byte validation, `unpdf` extraction, heading-aware chunking, in-process `nomic-embed-text` embeddings, `IngestionWorker` | **Done** |
-| **Days 6–8** | Retrieval (`EvidenceSource`) with `Membership` filter, prompt fencing, citation validation, abstention gates, `/ask` SSE streaming & history | **Next Up** |
-| **Days 9–10** | Next.js frontend: document library, streaming ask screen, clickable sources panel | Pending |
+| **Days 6–8** | Retrieval (`EvidenceSource`) with `Membership` filter, prompt fencing, citation validation, abstention gates, `/ask` SSE streaming & history | **Done** |
+| **Days 9–10** | Next.js frontend: document library, streaming ask screen, clickable sources panel | **Next Up** |
 | **Day 11** | Version diff (`GET /documents/:id/diff`) and change review (`POST /documents/:id/review`) | Pending |
 | **Day 12** | Evaluation suite (`POST /eval/run`, `GET /eval/runs`) with recorded recall/citation metrics | Pending |
 | **Days 13–15** | Docker Compose production packaging, CI, README & demo | Pending |

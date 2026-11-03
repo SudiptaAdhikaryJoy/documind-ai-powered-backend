@@ -77,7 +77,8 @@ describe('LlmService', () => {
     expect(body.model).toBe('qwen/qwen3.8-27b');
     expect(body.temperature).toBe(0);
     expect(body.max_tokens).toBe(250);
-    expect(body.think).toBe(false);
+    expect(body.think).toBeUndefined();
+    expect(body.chat_template_kwargs).toBeUndefined();
 
     expect(result.content).toBe('Refunds must be authorized by an admin [e1].');
     expect(result.promptTokens).toBe(120);
@@ -85,7 +86,7 @@ describe('LlmService', () => {
     expect(result.model).toBe('qwen/qwen3.8-27b');
   });
 
-  it('supports dynamic parameter overrides (model, temperature, maxTokens)', async () => {
+  it('supports dynamic parameter overrides and attaches think: false for Ollama endpoints', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: jest.fn().mockResolvedValueOnce({
@@ -109,6 +110,7 @@ describe('LlmService', () => {
     expect(body.model).toBe('deepseek-v3');
     expect(body.temperature).toBe(0.2);
     expect(body.max_tokens).toBe(100);
+    expect(body.think).toBe(false);
   });
 
   it('throws BadGatewayException when provider returns non-200 HTTP code', async () => {
