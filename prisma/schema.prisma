@@ -52,6 +52,7 @@ model User {
     phone           String         @unique
     password        String
     name            String
+    avatarUrl       String?
     isEmailVerified Boolean        @default(false)
     isPhoneVerified Boolean        @default(false)
     createdAt       DateTime       @default(now())
