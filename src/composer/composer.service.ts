@@ -83,7 +83,10 @@ export class ComposerService {
     // 2. Gate 1 Pre-LLM Abstention Check
     if (retrieval.abstained) {
       const latencyMs = Date.now() - startTime;
-      const answer = `I do not have enough verified evidence in your documents to answer this question. (Searched: ${docListSummary})`;
+      const guidance = await this.getAbstentionGuidance(
+        scope.workspaceId,
+        searchedDocs,
+      );
 
       await this.queryLogService.log({
         workspaceId: scope.workspaceId,
@@ -98,12 +101,14 @@ export class ComposerService {
       });
 
       return {
-        answer,
+        answer: guidance.guidanceMessage,
         abstained: true,
         reason: 'INSUFFICIENT_EVIDENCE_GATE_1',
         citations: [],
         pool: retrieval.pool,
         searchedDocuments: searchedDocs,
+        suggestedQuestions: guidance.suggestedQuestions,
+        availableTopics: guidance.availableTopics,
         promptTokens: 0,
         outputTokens: 0,
         latencyMs,
@@ -135,7 +140,10 @@ export class ComposerService {
       this.logger.log(
         `Gate 2 triggered: LLM replied with INSUFFICIENT_EVIDENCE sentinel`,
       );
-      const answer = `I do not have enough verified evidence in your documents to answer this question. (Searched: ${docListSummary})`;
+      const guidance = await this.getAbstentionGuidance(
+        scope.workspaceId,
+        searchedDocs,
+      );
 
       await this.queryLogService.log({
         workspaceId: scope.workspaceId,
@@ -150,12 +158,14 @@ export class ComposerService {
       });
 
       return {
-        answer,
+        answer: guidance.guidanceMessage,
         abstained: true,
         reason: 'INSUFFICIENT_EVIDENCE_GATE_2',
         citations: [],
         pool: retrieval.pool,
         searchedDocuments: searchedDocs,
+        suggestedQuestions: guidance.suggestedQuestions,
+        availableTopics: guidance.availableTopics,
         promptTokens: llmRes.promptTokens,
         outputTokens: llmRes.outputTokens,
         latencyMs: totalLatencyMs,
@@ -261,7 +271,10 @@ export class ComposerService {
     // 2. Gate 1 Pre-LLM Abstention Check
     if (retrieval.abstained) {
       const latencyMs = Date.now() - startTime;
-      const answer = `I do not have enough verified evidence in your documents to answer this question. (Searched: ${docListSummary})`;
+      const guidance = await this.getAbstentionGuidance(
+        scope.workspaceId,
+        searchedDocs,
+      );
 
       await this.queryLogService.log({
         workspaceId: scope.workspaceId,
@@ -280,8 +293,10 @@ export class ComposerService {
         data: {
           abstained: true,
           reason: 'INSUFFICIENT_EVIDENCE_GATE_1',
-          message: answer,
+          message: guidance.guidanceMessage,
           searchedDocuments: searchedDocs,
+          suggestedQuestions: guidance.suggestedQuestions,
+          availableTopics: guidance.availableTopics,
         },
       };
       return;
@@ -330,7 +345,10 @@ export class ComposerService {
       this.logger.log(
         `Gate 2 triggered: LLM replied with INSUFFICIENT_EVIDENCE sentinel`,
       );
-      const answer = `I do not have enough verified evidence in your documents to answer this question. (Searched: ${docListSummary})`;
+      const guidance = await this.getAbstentionGuidance(
+        scope.workspaceId,
+        searchedDocs,
+      );
 
       await this.queryLogService.log({
         workspaceId: scope.workspaceId,
@@ -349,8 +367,10 @@ export class ComposerService {
         data: {
           abstained: true,
           reason: 'INSUFFICIENT_EVIDENCE_GATE_2',
-          message: answer,
+          message: guidance.guidanceMessage,
           searchedDocuments: searchedDocs,
+          suggestedQuestions: guidance.suggestedQuestions,
+          availableTopics: guidance.availableTopics,
         },
       };
       return;
@@ -425,6 +445,90 @@ export class ComposerService {
         model: llmRes.model,
       },
     };
+  }
+
+  /**
+   * Helper to fetch available topics and generate smart suggested questions
+   * for a workspace when an abstention occurs.
+   */
+  async getAbstentionGuidance(
+    workspaceId: string,
+    searchedDocs: string[],
+  ): Promise<{
+    guidanceMessage: string;
+    availableTopics: string[];
+    suggestedQuestions: string[];
+  }> {
+    const docListSummary =
+      searchedDocs.length > 0 ? searchedDocs.join(', ') : 'no indexed documents';
+    const baseMessage = `I do not have enough verified evidence in your documents to answer this question. (Searched: ${docListSummary})`;
+
+    try {
+      let uniqueHeadings: string[] = [];
+      if (this.prisma && 'chunk' in this.prisma && (this.prisma as any).chunk?.findMany) {
+        const chunks = await (this.prisma as any).chunk.findMany({
+          where: {
+            version: {
+              document: {
+                workspaceId,
+                status: 'READY',
+              },
+            },
+            heading: { not: null },
+          },
+          select: {
+            heading: true,
+          },
+          take: 20,
+        });
+
+        uniqueHeadings = Array.from(
+          new Set<string>(
+            chunks
+              .map((c: { heading: string | null }) => c.heading?.trim())
+              .filter((h: string | undefined): h is string => Boolean(h && h.length > 2)),
+          ),
+        ).slice(0, 5);
+      }
+
+      const suggestedQuestions: string[] = [];
+      for (const heading of uniqueHeadings.slice(0, 2)) {
+        suggestedQuestions.push(`What does the document state regarding "${heading}"?`);
+      }
+      for (const doc of searchedDocs.slice(0, 2)) {
+        const cleanName = doc.replace(/\.[^/.]+$/, '');
+        suggestedQuestions.push(`What are the key points in ${cleanName}?`);
+      }
+      if (suggestedQuestions.length === 0) {
+        suggestedQuestions.push('What are the key requirements covered in these documents?');
+        suggestedQuestions.push('Summarize the primary subjects discussed in this workspace.');
+      }
+
+      const topicsList =
+        uniqueHeadings.length > 0
+          ? uniqueHeadings.map((h) => `• ${h}`).join('\n')
+          : searchedDocs.map((d) => `• ${d}`).join('\n');
+
+      const guidanceMessage =
+        `${baseMessage}\n\n` +
+        `💡 **Topics available in your documents:**\n${topicsList}\n\n` +
+        `Try asking one of the suggested questions below or inquiring about the topics above.`;
+
+      return {
+        guidanceMessage,
+        availableTopics: uniqueHeadings.length > 0 ? uniqueHeadings : searchedDocs,
+        suggestedQuestions: suggestedQuestions.slice(0, 3),
+      };
+    } catch {
+      return {
+        guidanceMessage: baseMessage,
+        availableTopics: searchedDocs,
+        suggestedQuestions: [
+          'What are the key requirements covered in these documents?',
+          'Summarize the primary subjects discussed in this workspace.',
+        ],
+      };
+    }
   }
 }
 

@@ -58,6 +58,16 @@ export interface ComposedAnswer {
    * Model identifier used for composition.
    */
   model: string;
+
+  /**
+   * Suggested actionable questions based on available workspace documents.
+   */
+  suggestedQuestions?: string[];
+
+  /**
+   * High-level topics or sections available in the workspace documents.
+   */
+  availableTopics?: string[];
 }
 
 export interface ComposerOptions {
@@ -105,6 +115,8 @@ export interface SseAbstainedEvent {
     reason: AbstentionReason;
     message: string;
     searchedDocuments: string[];
+    suggestedQuestions?: string[];
+    availableTopics?: string[];
   };
 }
 

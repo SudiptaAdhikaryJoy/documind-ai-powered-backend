@@ -293,6 +293,18 @@ export class AskResponseDto {
 
   @ApiProperty({ description: 'Model identifier used', example: 'qwen/qwen3.8-27b' })
   model: string;
+
+  @ApiPropertyOptional({
+    description: 'Suggested actionable questions based on available workspace documents',
+    example: ['What are the requirements for study abroad?', 'What documents are required for visa?'],
+  })
+  suggestedQuestions?: string[];
+
+  @ApiPropertyOptional({
+    description: 'High-level topics or sections available in the workspace documents',
+    example: ['Admission Requirements', 'Visa Category Guidelines'],
+  })
+  availableTopics?: string[];
 }
 
 export class QueryHistoryQueryDto {
