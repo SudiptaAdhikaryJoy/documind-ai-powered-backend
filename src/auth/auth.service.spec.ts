@@ -217,12 +217,37 @@ describe('AuthService (OTP, Email & SMS)', () => {
   });
 
   describe('refresh token reuse alert', () => {
-    it('kills sessions and dispatches instant security alert email on token reuse', async () => {
+    it('allows concurrent refresh within 30s grace window without killing sessions', async () => {
+      const presented = 'concurrent-token-value';
+      mockPrisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'tok-recent',
+        userId: 'user-active',
+        revokedAt: new Date(Date.now() - 5000), // revoked 5s ago (within 30s grace period)
+        user: { email: 'active@example.com' },
+      });
+      mockPrisma.refreshToken.create.mockResolvedValue({ id: 'tok-new' });
+
+      const res = await service.refresh(presented);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.data.accessToken).toBe('mock-access-token');
+      expect(mockPrisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(mockNotifications.notifyTokenReuseAlert).not.toHaveBeenCalled();
+      expect(mockPrisma.refreshToken.create).toHaveBeenCalled();
+    });
+
+    it('rejects invalid or empty refresh token', async () => {
+      await expect(service.refresh('')).rejects.toThrow('Refresh token is required');
+      // @ts-expect-error test undefined
+      await expect(service.refresh(undefined)).rejects.toThrow('Refresh token is required');
+    });
+
+    it('kills sessions and dispatches instant security alert email on token reuse outside grace period', async () => {
       const presented = 'revoked-token-value';
       mockPrisma.refreshToken.findUnique.mockResolvedValue({
         id: 'tok-1',
         userId: 'user-stolen',
-        revokedAt: new Date(Date.now() - 60000), // already revoked!
+        revokedAt: new Date(Date.now() - 60000), // already revoked 60s ago (> 30s grace period)
         user: { email: 'victim@example.com' },
       });
 
