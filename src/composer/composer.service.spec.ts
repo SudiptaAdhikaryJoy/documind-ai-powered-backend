@@ -166,6 +166,8 @@ describe('ComposerService', () => {
     expect(result.abstained).toBe(true);
     expect(result.reason).toBe('INSUFFICIENT_EVIDENCE_GATE_1');
     expect(result.answer).toContain('I do not have enough verified evidence');
+    expect(result.suggestedQuestions).toBeDefined();
+    expect(result.suggestedQuestions?.length).toBeGreaterThan(0);
     expect(llmService.complete).not.toHaveBeenCalled();
 
     // Verify telemetry logged
@@ -205,6 +207,8 @@ describe('ComposerService', () => {
     expect(result.abstained).toBe(true);
     expect(result.reason).toBe('INSUFFICIENT_EVIDENCE_GATE_2');
     expect(result.answer).toContain('I do not have enough verified evidence');
+    expect(result.suggestedQuestions).toBeDefined();
+    expect(result.suggestedQuestions?.length).toBeGreaterThan(0);
     expect(evidenceService.verifyCitations).not.toHaveBeenCalled();
 
     expect(queryLogService.log).toHaveBeenCalledWith(
