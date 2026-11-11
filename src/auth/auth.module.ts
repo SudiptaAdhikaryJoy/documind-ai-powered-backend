@@ -17,7 +17,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
         const secret = config.get<string>('JWT_SECRET', 'replace-me');
         const expiresIn = config.get<string>(
           'ACCESS_TTL',
-          '15m',
+          '2d',
         ) as JwtSignOptions['expiresIn'];
         return {
           secret,

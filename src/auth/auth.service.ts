@@ -28,7 +28,7 @@ const sha256 = (value: string) =>
 
 @Injectable()
 export class AuthService {
-  private readonly refreshDays = Number(process.env.REFRESH_TTL_DAYS ?? 7);
+  private readonly refreshDays = Number(process.env.REFRESH_TTL_DAYS ?? 30);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -110,6 +110,10 @@ export class AuthService {
   }
 
   async refresh(presented: string) {
+    if (!presented || typeof presented !== 'string') {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+
     const tokenHash = sha256(presented);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
@@ -121,6 +125,28 @@ export class AuthService {
     // Reuse detection: an already-revoked token means it was stolen and
     // replayed. Kill every session for that user.
     if (stored.revokedAt) {
+      // 30-second grace window: allows in-flight concurrent requests from the same client session
+      // to succeed without falsely treating parallel calls as token theft and revoking all sessions.
+      const gracePeriodMs = 30 * 1000;
+      const isWithinGrace = Date.now() - stored.revokedAt.getTime() < gracePeriodMs;
+
+      if (isWithinGrace) {
+        // Mint a replacement token pair for the concurrent request
+        const { token, hash, expiresAt } = this.mintRefresh();
+        await this.prisma.refreshToken.create({
+          data: { userId: stored.userId, tokenHash: hash, expiresAt },
+        });
+        const accessToken = await this.signAccess(stored.userId, stored.user.email);
+        return {
+          statusCode: 200,
+          message: 'Token refreshed successfully',
+          data: {
+            accessToken,
+            refreshToken: token,
+          },
+        };
+      }
+
       await this.prisma.refreshToken.updateMany({
         where: { userId: stored.userId, revokedAt: null },
         data: { revokedAt: new Date() },
