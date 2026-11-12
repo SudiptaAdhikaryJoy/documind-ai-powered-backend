@@ -1,0 +1,34 @@
+import { HttpStatus } from '@nestjs/common';
+
+export const ResponseCode = {
+  // 2xx success
+  OK: HttpStatus.OK,
+  CREATED: HttpStatus.CREATED,
+  ACCEPTED: HttpStatus.ACCEPTED,
+  NO_CONTENT: HttpStatus.NO_CONTENT,
+
+  // 3xx redirection
+  MOVED_PERMANENTLY: HttpStatus.MOVED_PERMANENTLY,
+  FOUND: HttpStatus.FOUND,
+  NOT_MODIFIED: HttpStatus.NOT_MODIFIED,
+
+  // 4xx client errors
+  BAD_REQUEST: HttpStatus.BAD_REQUEST,
+  UNAUTHORIZED: HttpStatus.UNAUTHORIZED,
+  FORBIDDEN: HttpStatus.FORBIDDEN,
+  NOT_FOUND: HttpStatus.NOT_FOUND,
+  METHOD_NOT_ALLOWED: HttpStatus.METHOD_NOT_ALLOWED,
+  CONFLICT: HttpStatus.CONFLICT,
+  GONE: HttpStatus.GONE,
+  PAYLOAD_TOO_LARGE: HttpStatus.PAYLOAD_TOO_LARGE,
+  UNSUPPORTED_MEDIA_TYPE: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+  UNPROCESSABLE_ENTITY: HttpStatus.UNPROCESSABLE_ENTITY,
+  TOO_MANY_REQUESTS: HttpStatus.TOO_MANY_REQUESTS,
+
+  // 5xx server errors
+  INTERNAL_SERVER_ERROR: HttpStatus.INTERNAL_SERVER_ERROR,
+  NOT_IMPLEMENTED: HttpStatus.NOT_IMPLEMENTED,
+  BAD_GATEWAY: HttpStatus.BAD_GATEWAY,
+  SERVICE_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
+  GATEWAY_TIMEOUT: HttpStatus.GATEWAY_TIMEOUT,
+} as const;

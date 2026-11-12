@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -22,6 +21,7 @@ import {
 } from './dto/auth.dto';
 import { OtpService } from '../communication/otp/otp.service';
 import { NotificationService } from '../communication/notification/notification.service';
+import { ResponseCode } from '../common/constants/response-codes';
 
 const sha256 = (value: string) =>
   createHash('sha256').update(value).digest('hex');
@@ -138,7 +138,7 @@ export class AuthService {
         });
         const accessToken = await this.signAccess(stored.userId, stored.user.email);
         return {
-          statusCode: 200,
+          statusCode: ResponseCode.OK,
           message: 'Token refreshed successfully',
           data: {
             accessToken,
@@ -174,7 +174,7 @@ export class AuthService {
 
     const accessToken = await this.signAccess(stored.userId, stored.user.email);
     return {
-      statusCode: 200,
+      statusCode: ResponseCode.OK,
       message: 'Token refreshed successfully',
       data: {
         accessToken,
@@ -200,7 +200,7 @@ export class AuthService {
     }
 
     return {
-      statusCode: 200,
+      statusCode: ResponseCode.OK,
       message: 'Verification successful',
       data: { verified: true },
     };
@@ -227,7 +227,7 @@ export class AuthService {
 
     const result = await this.otp.createAndSendOtp(dto.target, dto.purpose, purposeDesc);
     return {
-      statusCode: 200,
+      statusCode: ResponseCode.OK,
       message: result.message,
       data: { cooldownSeconds: result.cooldownSeconds },
     };
@@ -245,7 +245,7 @@ export class AuthService {
     // but in development we can be helpful or simply proceed.
     if (!user) {
       return {
-        statusCode: 200,
+        statusCode: ResponseCode.OK,
         message: 'If an account exists with this credential, a password reset code has been sent.',
       };
     }
@@ -257,7 +257,7 @@ export class AuthService {
     );
 
     return {
-      statusCode: 200,
+      statusCode: ResponseCode.OK,
       message: 'Password reset code has been sent successfully.',
     };
   }
@@ -288,7 +288,7 @@ export class AuthService {
     await this.logoutAll(user.id);
 
     return {
-      statusCode: 200,
+      statusCode: ResponseCode.OK,
       message: 'Password has been reset successfully. Please log in with your new password.',
     };
   }
@@ -309,7 +309,7 @@ export class AuthService {
     );
 
     return {
-      statusCode: 200,
+      statusCode: ResponseCode.OK,
       message: 'One-time login code sent to your phone',
       data: { cooldownSeconds: result.cooldownSeconds },
     };
@@ -356,7 +356,7 @@ export class AuthService {
     });
     const accessToken = await this.signAccess(userId, email);
     return {
-      statusCode: 201,
+      statusCode: ResponseCode.CREATED,
       message,
       data: {
         userName: name,
